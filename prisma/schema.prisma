@@ -27,3 +27,22 @@ model ChatPreference {
   updatedAt   DateTime    @updatedAt
 }
 
+model KnowledgeText {
+  id        String   @id @default(cuid())
+  title     String?
+  content   String
+  containerTag String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model KnowledgeFile {
+  id          String   @id @default(cuid())
+  title       String?
+  fileName    String
+  mimeType    String
+  size        Int
+  containerTag String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
