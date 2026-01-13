@@ -1,10 +1,14 @@
-import { addSupermemoryDocument } from "@/lib/supermemory";
+import {
+  addSupermemoryDocument,
+  deleteSupermemoryById,
+  getSupermemoryMemoryId,
+} from "@/lib/supermemory";
 import prisma from "@/lib/prisma";
 import mammoth from "mammoth";
 import pdfParse from "pdf-parse";
 import { NextResponse } from "next/server";
 
-const containerTag = process.env.SUPERMEMORY_CONTAINER_TAG?.trim() || "ragraft_default";
+const baseTag = process.env.SUPERMEMORY_CONTAINER_TAG?.trim() || "ragraft_default";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,6 +50,7 @@ export async function POST(request: Request) {
   const formData = await request.formData();
   const file = formData.get("file");
   const title = formData.get("title");
+  const tag = formData.get("tag");
 
   if (!file || !(file instanceof File)) {
     return NextResponse.json({ error: "File is required." }, { status: 400 });
@@ -66,9 +71,18 @@ export async function POST(request: Request) {
     );
   }
 
-  await addSupermemoryDocument(content, typeof title === "string" ? title : undefined, {
-    containerTag,
-  });
+  const trimmedTag = typeof tag === "string" && tag.trim() ? tag.trim() : null;
+  const finalTag = trimmedTag ?? baseTag;
+
+  const supermemoryPayload = await addSupermemoryDocument(
+    content,
+    typeof title === "string" ? title : undefined,
+    {
+      containerTag: finalTag,
+      tag: finalTag,
+    },
+  );
+  const memoryId = getSupermemoryMemoryId(supermemoryPayload);
 
   const item = await prisma.knowledgeFile.create({
     data: {
@@ -76,7 +90,8 @@ export async function POST(request: Request) {
       fileName: file.name,
       mimeType: file.type,
       size: file.size,
-      containerTag,
+      tag: finalTag,
+      memoryId,
     },
   });
 
@@ -94,6 +109,9 @@ export async function DELETE(request: Request) {
   });
 
   if (existing) {
+    if (existing.memoryId) {
+      await deleteSupermemoryById(existing.memoryId);
+    }
     await prisma.knowledgeFile.delete({
       where: { id: body.id },
     });

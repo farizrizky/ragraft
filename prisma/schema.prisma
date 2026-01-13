@@ -23,6 +23,11 @@ model ChatPreference {
   streamSpeed StreamSpeed
   openingLine String
   temperature  Float @default(0.4)
+  provider    String @default("groq")
+  model       String @default("llama-3.1-8b-instant")
+  apiKeyCiphertext String?
+  apiKeyIv    String?
+  apiKeyTag   String?
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 }
@@ -31,7 +36,8 @@ model KnowledgeText {
   id        String   @id @default(cuid())
   title     String?
   content   String
-  containerTag String
+  tag       String?
+  memoryId  String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -42,7 +48,22 @@ model KnowledgeFile {
   fileName    String
   mimeType    String
   size        Int
-  containerTag String
+  tag         String?
+  memoryId    String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+model AppSetting {
+  id                     String   @id
+  provider               String   @default("groq")
+  model                  String   @default("llama-3.1-8b-instant")
+  aiKeyCiphertext        String?
+  aiKeyIv                String?
+  aiKeyTag               String?
+  supermemoryKeyCiphertext String?
+  supermemoryKeyIv       String?
+  supermemoryKeyTag      String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 }

@@ -51,7 +51,6 @@ export async function POST(request: Request) {
   }
 
   const streamSpeed = streamSpeedInput as PrismaStreamSpeed;
-
   const preference = await prisma.chatPreference.upsert({
     where: { id: preferenceId },
     update: { name, tone, openingLine, streamSpeed, temperature },

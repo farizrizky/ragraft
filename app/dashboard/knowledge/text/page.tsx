@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 type KnowledgeTextItem = {
   id: string;
   title: string | null;
+  tag: string | null;
   content: string;
   updatedAt: string;
 };
@@ -12,11 +13,13 @@ type KnowledgeTextItem = {
 export default function KnowledgeTextPage() {
   const [items, setItems] = useState<KnowledgeTextItem[]>([]);
   const [title, setTitle] = useState("");
+  const [tag, setTag] = useState("");
   const [content, setContent] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -51,6 +54,7 @@ export default function KnowledgeTextPage() {
 
   const resetForm = () => {
     setTitle("");
+    setTag("");
     setContent("");
     setEditingId(null);
   };
@@ -64,7 +68,7 @@ export default function KnowledgeTextPage() {
     }
 
     setIsSaving(true);
-    setStatus(null);
+    setStatus(editingId ? "Updating..." : "Saving...");
 
     try {
       const response = await fetch(
@@ -74,6 +78,7 @@ export default function KnowledgeTextPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             title: title.trim() || undefined,
+            tag: tag.trim() || undefined,
             content: trimmed,
           }),
         },
@@ -102,12 +107,14 @@ export default function KnowledgeTextPage() {
   const handleEdit = (item: KnowledgeTextItem) => {
     setEditingId(item.id);
     setTitle(item.title ?? "");
+    setTag(item.tag ?? "");
     setContent(item.content);
     setStatus(null);
   };
 
   const handleDelete = async (id: string) => {
-    setStatus(null);
+    setDeletingId(id);
+    setStatus("Deleting...");
     try {
       const response = await fetch(`/api/knowledge/text/${id}`, {
         method: "DELETE",
@@ -122,6 +129,8 @@ export default function KnowledgeTextPage() {
       setStatus("Knowledge deleted.");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Delete failed.");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -149,6 +158,16 @@ export default function KnowledgeTextPage() {
               onChange={(event) => setTitle(event.target.value)}
               disabled={isSaving}
               placeholder="Example: Product FAQ"
+              className="rounded-xl border border-[color:var(--panel-border)] bg-transparent px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[color:var(--ring)] disabled:cursor-not-allowed disabled:opacity-60"
+            />
+          </label>
+          <label className="flex flex-col gap-2 text-sm font-medium">
+            Tag
+            <input
+              value={tag}
+              onChange={(event) => setTag(event.target.value)}
+              disabled={isSaving}
+              placeholder="Example: onboarding"
               className="rounded-xl border border-[color:var(--panel-border)] bg-transparent px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[color:var(--ring)] disabled:cursor-not-allowed disabled:opacity-60"
             />
           </label>
@@ -200,6 +219,7 @@ export default function KnowledgeTextPage() {
             <thead className="bg-[color:var(--background)] text-xs uppercase tracking-[0.2em] text-[color:var(--muted)]">
               <tr>
                 <th className="px-4 py-3 font-semibold">Title</th>
+                <th className="px-4 py-3 font-semibold">Tag</th>
                 <th className="px-4 py-3 font-semibold">Description</th>
                 <th className="px-4 py-3 font-semibold">Updated</th>
                 <th className="px-4 py-3 font-semibold">Actions</th>
@@ -208,13 +228,13 @@ export default function KnowledgeTextPage() {
             <tbody className="divide-y divide-[color:var(--panel-border)]">
               {isLoading ? (
                 <tr>
-                  <td className="px-4 py-4 text-[color:var(--muted)]" colSpan={4}>
+                  <td className="px-4 py-4 text-[color:var(--muted)]" colSpan={5}>
                     Loading...
                   </td>
                 </tr>
               ) : items.length === 0 ? (
                 <tr>
-                  <td className="px-4 py-4 text-[color:var(--muted)]" colSpan={4}>
+                  <td className="px-4 py-4 text-[color:var(--muted)]" colSpan={5}>
                     No saved knowledge yet.
                   </td>
                 </tr>
@@ -223,6 +243,9 @@ export default function KnowledgeTextPage() {
                   <tr key={item.id}>
                     <td className="px-4 py-4 font-medium">
                       {item.title || "Untitled"}
+                    </td>
+                    <td className="px-4 py-4 text-[color:var(--muted)]">
+                      {item.tag || "-"}
                     </td>
                     <td className="px-4 py-4 text-[color:var(--muted)]">
                       {item.content.length > 120
@@ -244,9 +267,10 @@ export default function KnowledgeTextPage() {
                         <button
                           type="button"
                           onClick={() => handleDelete(item.id)}
-                          className="rounded-full border border-[color:var(--panel-border)] px-4 py-1 text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)] transition hover:text-[color:var(--foreground)]"
+                          disabled={isSaving || deletingId === item.id}
+                          className="rounded-full border border-[color:var(--panel-border)] px-4 py-1 text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)] transition hover:text-[color:var(--foreground)] disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                          Delete
+                          {deletingId === item.id ? "Deleting..." : "Delete"}
                         </button>
                       </div>
                     </td>

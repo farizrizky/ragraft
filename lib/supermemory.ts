@@ -1,3 +1,5 @@
+import { getSupermemoryKey } from "@/lib/settings";
+
 const SUPERMEMORY_BASE_URL = "https://api.supermemory.ai";
 const DEFAULT_CONTAINER_TAG = "ragraft_default";
 
@@ -8,7 +10,11 @@ type SupermemorySearchResult = {
   data?: unknown[];
 };
 
-function getApiKey() {
+async function getApiKey() {
+  const dbKey = await getSupermemoryKey();
+  if (dbKey) {
+    return dbKey;
+  }
   return process.env.SUPERMEMORY_API_KEY ?? "";
 }
 
@@ -83,14 +89,15 @@ function extractChunks(payload: SupermemorySearchResult): string[] {
 export async function addSupermemoryDocument(
   content: string,
   title?: string,
-  options?: { containerTag?: string },
+  options?: { containerTag?: string; tag?: string },
 ) {
-  const apiKey = getApiKey();
+  const apiKey = await getApiKey();
   if (!apiKey) {
     throw new Error("SUPERMEMORY_API_KEY is not set.");
   }
 
-  const containerTag = options?.containerTag ?? getContainerTag();
+  const containerTag =
+    options?.containerTag ?? options?.tag ?? getContainerTag();
   const response = await fetch(`${SUPERMEMORY_BASE_URL}/v3/documents`, {
     method: "POST",
     headers: {
@@ -100,7 +107,7 @@ export async function addSupermemoryDocument(
     body: JSON.stringify({
       content,
       containerTag,
-      metadata: title ? { title } : undefined,
+      metadata: title || options?.tag ? { title, tag: options?.tag } : undefined,
     }),
   });
 
@@ -112,11 +119,72 @@ export async function addSupermemoryDocument(
   return response.json();
 }
 
+export function getSupermemoryMemoryId(payload: unknown) {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+  const record = payload as Record<string, unknown>;
+  const directId = record.memoryId ?? record.id;
+  if (typeof directId === "string" && directId.trim()) {
+    return directId.trim();
+  }
+  const data = record.data as Record<string, unknown> | undefined;
+  if (data) {
+    const dataId = data.memoryId ?? data.id;
+    if (typeof dataId === "string" && dataId.trim()) {
+      return dataId.trim();
+    }
+  }
+  const memory = record.memory as Record<string, unknown> | undefined;
+  if (memory) {
+    const memoryId = memory.id ?? memory.memoryId;
+    if (typeof memoryId === "string" && memoryId.trim()) {
+      return memoryId.trim();
+    }
+  }
+  return null;
+}
+
+export async function updateSupermemoryDocument(
+  documentId: string,
+  content: string,
+  title?: string,
+  options?: { containerTag?: string; tag?: string },
+) {
+  const apiKey = await getApiKey();
+  if (!apiKey) {
+    throw new Error("SUPERMEMORY_API_KEY is not set.");
+  }
+
+  const containerTag =
+    options?.containerTag ?? options?.tag ?? getContainerTag();
+  const response = await fetch(`${SUPERMEMORY_BASE_URL}/v3/documents/${documentId}`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      containerTag,
+      containerTags: [containerTag],
+      content,
+      metadata: title || options?.tag ? { title, tag: options?.tag } : undefined,
+    }),
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || "Failed to update Supermemory document.");
+  }
+
+  return response.json();
+}
+
 export async function searchSupermemory(
   query: string,
   options?: { containerTags?: string[] },
 ) {
-  const apiKey = getApiKey();
+  const apiKey = await getApiKey();
   if (!apiKey) {
     throw new Error("SUPERMEMORY_API_KEY is not set.");
   }
@@ -154,8 +222,31 @@ export async function searchSupermemory(
   return extractChunks(payload);
 }
 
+export async function deleteSupermemoryById(memoryId: string) {
+  const apiKey = await getApiKey();
+  if (!apiKey) {
+    throw new Error("SUPERMEMORY_API_KEY is not set.");
+  }
+
+  const response = await fetch(`${SUPERMEMORY_BASE_URL}/v3/documents/bulk`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ ids: [memoryId] }),
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || "Failed to delete Supermemory memory.");
+  }
+
+  return response.json();
+}
+
 export async function deleteSupermemoryByTag(containerTag: string) {
-  const apiKey = getApiKey();
+  const apiKey = await getApiKey();
   if (!apiKey) {
     throw new Error("SUPERMEMORY_API_KEY is not set.");
   }
