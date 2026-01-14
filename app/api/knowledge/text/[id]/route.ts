@@ -10,7 +10,7 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const baseTag = process.env.SUPERMEMORY_CONTAINER_TAG?.trim() || "ragraft_default";
+const baseTag = process.env.SUPERMEMORY_CONTAINER_TAG?.trim() || "ragnara_default";
 
 function buildSupermemoryContent(title: string | undefined, content: string) {
   const trimmedTitle = title?.trim();

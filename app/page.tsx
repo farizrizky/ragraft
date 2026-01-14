@@ -5,7 +5,7 @@ export default function Home() {
     <div className="flex min-h-screen items-center justify-center bg-landing px-6 text-[color:var(--foreground)]">
       <main className="w-full max-w-3xl rounded-3xl border border-[color:var(--panel-border)] bg-[color:var(--panel)]/90 p-10 text-center shadow-sm backdrop-blur">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--muted)]">
-          Ragraft workspace
+          Ragnara workspace
         </p>
         <h1 className="mt-4 text-3xl font-semibold">
           Choose your next stop.

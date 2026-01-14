@@ -8,7 +8,7 @@ import mammoth from "mammoth";
 import pdfParse from "pdf-parse";
 import { NextResponse } from "next/server";
 
-const baseTag = process.env.SUPERMEMORY_CONTAINER_TAG?.trim() || "ragraft_default";
+const baseTag = process.env.SUPERMEMORY_CONTAINER_TAG?.trim() || "ragnara_default";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

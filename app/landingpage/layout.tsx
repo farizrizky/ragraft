@@ -8,7 +8,7 @@ export default function LandingLayout({ children }: { children: ReactNode }) {
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-6">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--muted)]">
-            Ragraft
+            Ragnara
           </p>
           <h1 className="text-xl font-semibold">Landing</h1>
         </div>

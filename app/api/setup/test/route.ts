@@ -5,7 +5,7 @@ import { getAiSetup, getSupermemoryKey } from "@/lib/settings";
 import { generateGoogleText } from "@/lib/google-ai";
 
 const defaultSupermemoryTag =
-  process.env.SUPERMEMORY_CONTAINER_TAG?.trim() || "ragraft_default";
+  process.env.SUPERMEMORY_CONTAINER_TAG?.trim() || "ragnara_default";
 
 type TestResult = {
   ok: boolean;

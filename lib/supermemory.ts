@@ -1,7 +1,7 @@
 import { getSupermemoryKey } from "@/lib/settings";
 
 const SUPERMEMORY_BASE_URL = "https://api.supermemory.ai";
-const DEFAULT_CONTAINER_TAG = "ragraft_default";
+const DEFAULT_CONTAINER_TAG = "ragnara_default";
 
 type SupermemorySearchResult = {
   chunks?: unknown[];
