@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import { useParams } from "next/navigation";
 import ChatMessage from "@/components/ChatMessage";
 import { Fraunces, Space_Grotesk } from "next/font/google";
@@ -320,27 +321,29 @@ export default function PublicChatPage() {
   const showFooterBelowChat = !description;
   const isMultiline = input.includes("\n");
 
+  const chatStyle = {
+    "--chat-accent": headerColor,
+    "--background": "#f2f6ff",
+    "--foreground": "#0b1224",
+    "--panel": "#ffffff",
+    "--panel-border": "#dbe5f5",
+    "--muted": "#42506b",
+    "--accent-1": "#1f4bd8",
+    "--accent-2": "#3b82f6",
+    "--accent-3": "#0b1224",
+    "--ring": "#2563eb",
+    "--gradient-start": "#e8f0ff",
+    "--gradient-mid": "#d9e7ff",
+    "--gradient-end": "#f6f9ff",
+    backgroundColor: "#f2f6ff",
+    color: "#0b1224",
+    colorScheme: "light",
+  } as CSSProperties;
+
   return (
     <div
       className={`public-chat-bg light fixed inset-0 overflow-hidden text-[color:var(--foreground)] ${spaceGrotesk.className}`}
-      style={{
-        ["--chat-accent" as const]: headerColor,
-        ["--background" as const]: "#f2f6ff",
-        ["--foreground" as const]: "#0b1224",
-        ["--panel" as const]: "#ffffff",
-        ["--panel-border" as const]: "#dbe5f5",
-        ["--muted" as const]: "#42506b",
-        ["--accent-1" as const]: "#1f4bd8",
-        ["--accent-2" as const]: "#3b82f6",
-        ["--accent-3" as const]: "#0b1224",
-        ["--ring" as const]: "#2563eb",
-        ["--gradient-start" as const]: "#e8f0ff",
-        ["--gradient-mid" as const]: "#d9e7ff",
-        ["--gradient-end" as const]: "#f6f9ff",
-        backgroundColor: "#f2f6ff",
-        color: "#0b1224",
-        colorScheme: "light",
-      }}
+      style={chatStyle}
     >
       <div className="relative flex h-screen min-h-0 flex-col">
         <header
