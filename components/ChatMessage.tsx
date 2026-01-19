@@ -15,7 +15,8 @@ marked.setOptions({
 
 export default function ChatMessage({ content, className = "" }: ChatMessageProps) {
   const html = useMemo(() => {
-    const raw = marked.parse(content || "");
+    const parsed = marked.parse(content || "");
+    const raw = typeof parsed === "string" ? parsed : "";
     return DOMPurify.sanitize(raw, {
       USE_PROFILES: { html: true },
     });

@@ -88,7 +88,7 @@ function extractChunks(payload: SupermemorySearchResult): string[] {
 
 export async function addSupermemoryDocument(
   content: string,
-  title?: string,
+  title: string | undefined,
   options: { containerTag?: string; tag?: string; userId: string },
 ) {
   const apiKey = await getApiKey(options.userId);
@@ -148,7 +148,7 @@ export function getSupermemoryMemoryId(payload: unknown) {
 export async function updateSupermemoryDocument(
   documentId: string,
   content: string,
-  title?: string,
+  title: string | undefined,
   options: { containerTag?: string; tag?: string; userId: string },
 ) {
   const apiKey = await getApiKey(options.userId);

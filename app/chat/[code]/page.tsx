@@ -409,12 +409,14 @@ export default function PublicChatPage() {
                   key={message.id}
                   style={
                     message.role === "user"
-                      ? {
+                      ? ({
                           backgroundColor: headerColor,
                           color: headerTextColor,
-                          ["--bubble-color" as const]: headerColor,
-                        }
-                      : { ["--bubble-color" as const]: "var(--panel)" }
+                          "--bubble-color": headerColor,
+                        } as CSSProperties)
+                      : ({
+                          "--bubble-color": "var(--panel)",
+                        } as CSSProperties)
                   }
                   className={
                     message.role === "user"

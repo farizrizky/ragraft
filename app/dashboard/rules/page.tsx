@@ -57,7 +57,11 @@ export default function RulesPage() {
   const handleChange = (
     event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) => {
-    const { name, value, type, checked } = event.target;
+    const { name, value, type } = event.target;
+    const checked =
+      type === "checkbox"
+        ? (event.target as HTMLInputElement).checked
+        : undefined;
     setForm((prev) => ({
       ...prev,
       [name]:
