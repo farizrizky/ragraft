@@ -1,13 +1,15 @@
 type NavItem = {
   label: string;
   href: string;
-  icon: "overview" | "knowledge" | "chat" | "setup";
+  icon: "overview" | "knowledge" | "chat" | "analytics" | "setup" | "rules";
 };
 
 const navItems: NavItem[] = [
   { label: "Overview", href: "/dashboard", icon: "overview" },
+  { label: "Analytics", href: "/dashboard/analytics", icon: "analytics" },
   { label: "Knowledge", href: "/dashboard/knowledge", icon: "knowledge" },
   { label: "Chat Preferences", href: "/dashboard/chat-preferences", icon: "chat" },
+  { label: "Rules", href: "/dashboard/rules", icon: "rules" },
   { label: "Setup", href: "/dashboard/setup", icon: "setup" },
 ];
 
@@ -58,6 +60,47 @@ function NavIcon({ name }: { name: NavItem["icon"] }) {
         strokeLinejoin="round"
       >
         <path d="M21 12a7 7 0 0 1-7 7H8l-5 3 2-5a7 7 0 0 1-1-5 7 7 0 0 1 7-7h3a7 7 0 0 1 7 7Z" />
+      </svg>
+    );
+  }
+  if (name === "analytics") {
+    return (
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 24 24"
+        className="h-4 w-4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M4 19V5" />
+        <path d="M4 19h16" />
+        <path d="M8 15v-4" />
+        <path d="M12 15V9" />
+        <path d="M16 15v-7" />
+      </svg>
+    );
+  }
+  if (name === "rules") {
+    return (
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 24 24"
+        className="h-4 w-4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M8 6h10" />
+        <path d="M8 12h10" />
+        <path d="M8 18h10" />
+        <path d="M4 6h.01" />
+        <path d="M4 12h.01" />
+        <path d="M4 18h.01" />
       </svg>
     );
   }

@@ -15,6 +15,21 @@
   --gradient-end: #f6f9ff;
 }
 
+.light {
+  --background: #f2f6ff;
+  --foreground: #0b1224;
+  --panel: #ffffff;
+  --panel-border: #dbe5f5;
+  --muted: #42506b;
+  --accent-1: #1f4bd8;
+  --accent-2: #3b82f6;
+  --accent-3: #0b1224;
+  --ring: #2563eb;
+  --gradient-start: #e8f0ff;
+  --gradient-mid: #d9e7ff;
+  --gradient-end: #f6f9ff;
+}
+
 .dark {
   --background: #070b16;
   --foreground: #e6ecf8;
@@ -48,4 +63,64 @@ body {
     radial-gradient(1100px circle at 0% 0%, var(--gradient-start), transparent 55%),
     radial-gradient(900px circle at 100% 100%, var(--gradient-mid), transparent 55%),
     linear-gradient(160deg, var(--gradient-start), var(--gradient-end));
+}
+
+.public-chat-bg {
+  --chat-accent: #1f4bd8;
+  background: transparent;
+}
+
+.modern-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, 0.45) transparent;
+}
+
+.modern-scrollbar::-webkit-scrollbar {
+  width: 10px;
+}
+
+.modern-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.modern-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.35);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.modern-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.55);
+}
+
+.typing-dots span {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin: 0 2px;
+  border-radius: 999px;
+  background: currentColor;
+  animation: typingWave 1.2s infinite ease-in-out;
+}
+
+.typing-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typingWave {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+  30% {
+    transform: translateY(-5px);
+    opacity: 1;
+  }
 }

@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import ConfirmDialog from "@/components/ConfirmDialog";
+import Notification from "@/components/Notification";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 type KnowledgeTextItem = {
   id: string;
@@ -10,16 +12,31 @@ type KnowledgeTextItem = {
   updatedAt: string;
 };
 
+type NotificationTone = "success" | "error" | "warning" | "info";
+
 export default function KnowledgeTextPage() {
   const [items, setItems] = useState<KnowledgeTextItem[]>([]);
   const [title, setTitle] = useState("");
   const [tag, setTag] = useState("");
   const [content, setContent] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [status, setStatus] = useState<string | null>(null);
+  const [notification, setNotification] = useState<{
+    message: string;
+    tone: NotificationTone;
+  } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<KnowledgeTextItem | null>(
+    null,
+  );
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
+
+  const notify = useCallback((tone: NotificationTone, message: string) => {
+    setNotification({ tone, message });
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -36,7 +53,7 @@ export default function KnowledgeTextPage() {
         }
       } catch {
         if (isMounted) {
-          setStatus("Failed to load knowledge list.");
+          notify("error", "Failed to load knowledge list.");
         }
       } finally {
         if (isMounted) {
@@ -50,7 +67,35 @@ export default function KnowledgeTextPage() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [notify]);
+
+  const filteredItems = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) {
+      return items;
+    }
+    return items.filter((item) => {
+      const title = item.title?.toLowerCase() ?? "";
+      const tag = item.tag?.toLowerCase() ?? "";
+      const content = item.content.toLowerCase();
+      return (
+        title.includes(normalized) ||
+        tag.includes(normalized) ||
+        content.includes(normalized)
+      );
+    });
+  }, [items, query]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pagedItems = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredItems.slice(start, start + pageSize);
+  }, [filteredItems, currentPage]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query]);
 
   const resetForm = () => {
     setTitle("");
@@ -63,12 +108,12 @@ export default function KnowledgeTextPage() {
     event.preventDefault();
     const trimmed = content.trim();
     if (!trimmed) {
-      setStatus("Please paste some text.");
+      notify("warning", "Please paste some text.");
       return;
     }
 
     setIsSaving(true);
-    setStatus(editingId ? "Updating..." : "Saving...");
+    notify("info", editingId ? "Updating..." : "Saving...");
 
     try {
       const response = await fetch(
@@ -89,7 +134,7 @@ export default function KnowledgeTextPage() {
         throw new Error(error || "Failed to save knowledge.");
       }
 
-      setStatus(editingId ? "Knowledge updated." : "Knowledge saved.");
+      notify("success", editingId ? "Knowledge updated." : "Knowledge saved.");
       resetForm();
 
       const listResponse = await fetch("/api/knowledge/text");
@@ -98,7 +143,7 @@ export default function KnowledgeTextPage() {
       };
       setItems(listData.items ?? []);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Save failed.");
+      notify("error", error instanceof Error ? error.message : "Save failed.");
     } finally {
       setIsSaving(false);
     }
@@ -109,29 +154,51 @@ export default function KnowledgeTextPage() {
     setTitle(item.title ?? "");
     setTag(item.tag ?? "");
     setContent(item.content);
-    setStatus(null);
+    setNotification(null);
   };
 
   const handleDelete = async (id: string) => {
     setDeletingId(id);
-    setStatus("Deleting...");
+    notify("info", "Deleting...");
     try {
       const response = await fetch(`/api/knowledge/text/${id}`, {
         method: "DELETE",
       });
       if (!response.ok) {
-        throw new Error("Failed to delete knowledge.");
+        let message = "Failed to delete knowledge.";
+        const errorText = await response.text();
+        try {
+          const payload = JSON.parse(errorText) as { error?: string };
+          if (payload?.error) {
+            message = payload.error;
+          } else if (errorText) {
+            message = errorText;
+          }
+        } catch {
+          if (errorText) {
+            message = errorText;
+          }
+        }
+        throw new Error(message);
       }
       setItems((prev) => prev.filter((item) => item.id !== id));
       if (editingId === id) {
         resetForm();
       }
-      setStatus("Knowledge deleted.");
+      notify("success", "Knowledge deleted.");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Delete failed.");
+      notify(
+        "error",
+        error instanceof Error ? error.message : "Delete failed.",
+      );
     } finally {
       setDeletingId(null);
+      setPendingDelete(null);
     }
+  };
+
+  const requestDelete = (item: KnowledgeTextItem) => {
+    setPendingDelete(item);
   };
 
   return (
@@ -145,6 +212,14 @@ export default function KnowledgeTextPage() {
           Add, update, or remove text knowledge for the assistant.
         </p>
       </section>
+      {notification ? (
+        <Notification
+          message={notification.message}
+          tone={notification.tone}
+          floating
+          onDismiss={() => setNotification(null)}
+        />
+      ) : null}
 
       <section className="rounded-3xl border border-[color:var(--panel-border)] bg-[color:var(--panel)] p-6">
         <h2 className="text-lg font-semibold">
@@ -203,17 +278,20 @@ export default function KnowledgeTextPage() {
                 Cancel
               </button>
             ) : null}
-            {status ? (
-              <span className="text-xs font-semibold text-[color:var(--muted)]">
-                {status}
-              </span>
-            ) : null}
           </div>
         </form>
       </section>
 
       <section className="rounded-3xl border border-[color:var(--panel-border)] bg-[color:var(--panel)] p-6">
-        <h2 className="text-lg font-semibold">Saved text</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Saved text</h2>
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search text..."
+            className="w-48 rounded-full border border-[color:var(--panel-border)] bg-transparent px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[color:var(--foreground)] outline-none transition focus:ring-2 focus:ring-[color:var(--ring)]"
+          />
+        </div>
         <div className="mt-4 overflow-hidden rounded-2xl border border-[color:var(--panel-border)]">
           <table className="w-full text-left text-sm">
             <thead className="bg-[color:var(--background)] text-xs uppercase tracking-[0.2em] text-[color:var(--muted)]">
@@ -232,14 +310,14 @@ export default function KnowledgeTextPage() {
                     Loading...
                   </td>
                 </tr>
-              ) : items.length === 0 ? (
+              ) : pagedItems.length === 0 ? (
                 <tr>
                   <td className="px-4 py-4 text-[color:var(--muted)]" colSpan={5}>
                     No saved knowledge yet.
                   </td>
                 </tr>
               ) : (
-                items.map((item) => (
+                pagedItems.map((item) => (
                   <tr key={item.id}>
                     <td className="px-4 py-4 font-medium">
                       {item.title || "Untitled"}
@@ -266,7 +344,7 @@ export default function KnowledgeTextPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleDelete(item.id)}
+                          onClick={() => requestDelete(item)}
                           disabled={isSaving || deletingId === item.id}
                           className="rounded-full border border-[color:var(--panel-border)] px-4 py-1 text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)] transition hover:text-[color:var(--foreground)] disabled:cursor-not-allowed disabled:opacity-60"
                         >
@@ -280,7 +358,44 @@ export default function KnowledgeTextPage() {
             </tbody>
           </table>
         </div>
+        <div className="mt-4 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)]">
+          <span>
+            {filteredItems.length} result
+            {filteredItems.length === 1 ? "" : "s"}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              className="rounded-full border border-[color:var(--panel-border)] px-3 py-1 text-[color:var(--muted)] transition hover:text-[color:var(--foreground)] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Prev
+            </button>
+            <span>
+              Page {currentPage} of {totalPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages}
+              className="rounded-full border border-[color:var(--panel-border)] px-3 py-1 text-[color:var(--muted)] transition hover:text-[color:var(--foreground)] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Next
+            </button>
+          </div>
+        </div>
       </section>
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
+        title="Delete knowledge?"
+        description="This action will permanently remove the text knowledge."
+        confirmLabel="Yes, delete"
+        cancelLabel="Cancel"
+        isBusy={Boolean(deletingId)}
+        onConfirm={() => pendingDelete && handleDelete(pendingDelete.id)}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   );
 }

@@ -5,6 +5,7 @@ type GoogleGenerateInput = {
   model: string;
   messages: CoreMessage[];
   temperature?: number;
+  maxOutputTokens?: number;
 };
 
 type GoogleCandidate = {
@@ -31,7 +32,11 @@ function getTextFromContent(content: CoreMessage["content"]) {
     .trim();
 }
 
-function buildGooglePayload(messages: CoreMessage[], temperature?: number) {
+function buildGooglePayload(
+  messages: CoreMessage[],
+  temperature?: number,
+  maxOutputTokens?: number,
+) {
   const systemMessages = messages.filter((message) => message.role === "system");
   const systemText = systemMessages
     .map((message) => getTextFromContent(message.content))
@@ -57,6 +62,10 @@ function buildGooglePayload(messages: CoreMessage[], temperature?: number) {
     contents,
     generationConfig: {
       temperature: typeof temperature === "number" ? temperature : undefined,
+      maxOutputTokens:
+        typeof maxOutputTokens === "number" && maxOutputTokens > 0
+          ? Math.floor(maxOutputTokens)
+          : undefined,
     },
   };
 }
@@ -66,7 +75,11 @@ export async function generateGoogleText(input: GoogleGenerateInput) {
     input.model,
   )}:generateContent?key=${encodeURIComponent(input.apiKey)}`;
 
-  const payload = buildGooglePayload(input.messages, input.temperature);
+  const payload = buildGooglePayload(
+    input.messages,
+    input.temperature,
+    input.maxOutputTokens,
+  );
 
   const response = await fetch(url, {
     method: "POST",
@@ -89,4 +102,52 @@ export async function generateGoogleText(input: GoogleGenerateInput) {
   }
 
   return text;
+}
+
+export async function generateGoogleTextWithUsage(input: GoogleGenerateInput) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+    input.model,
+  )}:generateContent?key=${encodeURIComponent(input.apiKey)}`;
+
+  const payload = buildGooglePayload(
+    input.messages,
+    input.temperature,
+    input.maxOutputTokens,
+  );
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || "Failed to generate Google AI response.");
+  }
+
+  const data = (await response.json()) as {
+    candidates?: GoogleCandidate[];
+    usageMetadata?: {
+      promptTokenCount?: number;
+      candidatesTokenCount?: number;
+      totalTokenCount?: number;
+    };
+  };
+
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+  if (!text) {
+    throw new Error("Google AI response was empty.");
+  }
+
+  return {
+    text,
+    usage: data.usageMetadata
+      ? {
+          promptTokens: data.usageMetadata.promptTokenCount ?? 0,
+          completionTokens: data.usageMetadata.candidatesTokenCount ?? 0,
+          totalTokens: data.usageMetadata.totalTokenCount ?? 0,
+        }
+      : null,
+  };
 }

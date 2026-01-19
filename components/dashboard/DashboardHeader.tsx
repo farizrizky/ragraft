@@ -1,4 +1,5 @@
 import ThemeToggle from "@/components/ThemeToggle";
+import UserMenu from "@/components/dashboard/UserMenu";
 
 export default function DashboardHeader() {
   return (
@@ -11,6 +12,7 @@ export default function DashboardHeader() {
           <h1 className="text-2xl font-semibold">RAGNARA</h1>
         </div>
         <div className="flex items-center gap-3">
+          <UserMenu />
           <ThemeToggle />
         </div>
       </div>

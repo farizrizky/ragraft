@@ -10,12 +10,12 @@ type SupermemorySearchResult = {
   data?: unknown[];
 };
 
-async function getApiKey() {
-  const dbKey = await getSupermemoryKey();
+async function getApiKey(userId: string) {
+  const dbKey = await getSupermemoryKey(userId);
   if (dbKey) {
     return dbKey;
   }
-  return process.env.SUPERMEMORY_API_KEY ?? "";
+  return "";
 }
 
 function getContainerTag() {
@@ -89,9 +89,9 @@ function extractChunks(payload: SupermemorySearchResult): string[] {
 export async function addSupermemoryDocument(
   content: string,
   title?: string,
-  options?: { containerTag?: string; tag?: string },
+  options: { containerTag?: string; tag?: string; userId: string },
 ) {
-  const apiKey = await getApiKey();
+  const apiKey = await getApiKey(options.userId);
   if (!apiKey) {
     throw new Error("SUPERMEMORY_API_KEY is not set.");
   }
@@ -149,9 +149,9 @@ export async function updateSupermemoryDocument(
   documentId: string,
   content: string,
   title?: string,
-  options?: { containerTag?: string; tag?: string },
+  options: { containerTag?: string; tag?: string; userId: string },
 ) {
-  const apiKey = await getApiKey();
+  const apiKey = await getApiKey(options.userId);
   if (!apiKey) {
     throw new Error("SUPERMEMORY_API_KEY is not set.");
   }
@@ -182,9 +182,9 @@ export async function updateSupermemoryDocument(
 
 export async function searchSupermemory(
   query: string,
-  options?: { containerTags?: string[] },
+  options: { containerTags?: string[]; userId: string },
 ) {
-  const apiKey = await getApiKey();
+  const apiKey = await getApiKey(options.userId);
   if (!apiKey) {
     throw new Error("SUPERMEMORY_API_KEY is not set.");
   }
@@ -222,8 +222,8 @@ export async function searchSupermemory(
   return extractChunks(payload);
 }
 
-export async function deleteSupermemoryById(memoryId: string) {
-  const apiKey = await getApiKey();
+export async function deleteSupermemoryById(memoryId: string, userId: string) {
+  const apiKey = await getApiKey(userId);
   if (!apiKey) {
     throw new Error("SUPERMEMORY_API_KEY is not set.");
   }
@@ -245,8 +245,8 @@ export async function deleteSupermemoryById(memoryId: string) {
   return response.json();
 }
 
-export async function deleteSupermemoryByTag(containerTag: string) {
-  const apiKey = await getApiKey();
+export async function deleteSupermemoryByTag(containerTag: string, userId: string) {
+  const apiKey = await getApiKey(userId);
   if (!apiKey) {
     throw new Error("SUPERMEMORY_API_KEY is not set.");
   }

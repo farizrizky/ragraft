@@ -1,15 +1,18 @@
 import { createGroq, groq } from "@ai-sdk/groq";
 import { generateText, type CoreMessage } from "ai";
-import { searchSupermemory } from "@/lib/supermemory";
+import { getServerUser } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { NextResponse } from "next/server";
 import { getAiSetup, getSupermemoryKey } from "@/lib/settings";
 import { generateGoogleText } from "@/lib/google-ai";
+import { enrichWithKnowledge, getTextFromContent, routeNeedsRag } from "@/lib/rag";
+import { limitMessagesForContext } from "@/lib/messages";
+import { buildConstraintMessage } from "@/lib/constraints";
+import { findMatchingRule, type ResponseRule } from "@/lib/rules";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const preferenceId = "default";
 const minTemperature = 0;
 const maxTemperature = 0.8;
 const defaultTemperature = 0.4;
@@ -38,33 +41,55 @@ function buildGroqModel(model: string, apiKey: string) {
   return createGroq({ apiKey })(resolveModel(model));
 }
 
-function normalizeTag(value: string) {
-  return value.trim().toLowerCase();
-}
 
 export async function POST(request: Request) {
+  const user = await getServerUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { messages } = (await request.json()) as {
     messages: ChatMessage[];
   };
 
   let temperature = defaultTemperature;
+  let maxOutputTokens: number | null = null;
+  let historyMessageLimit: number | null = null;
+  let ragMaxChunks: number | null = null;
+  let ragChunkMaxChars: number | null = null;
+  let ragMaxContextChars: number | null = null;
   let modelProvider = defaultProvider;
   let preferenceModel = defaultModel;
   let preferenceApiKey: string | null = null;
 
   try {
     const preference = await prisma.chatPreference.findUnique({
-      where: { id: preferenceId },
+      where: { userId: user.id },
     });
     if (preference?.temperature !== undefined) {
       temperature = clampTemperature(preference.temperature);
+    }
+    if (preference?.maxOutputTokens) {
+      maxOutputTokens = preference.maxOutputTokens;
+    }
+    if (preference?.historyMessageLimit) {
+      historyMessageLimit = preference.historyMessageLimit;
+    }
+    if (preference?.ragMaxChunks) {
+      ragMaxChunks = preference.ragMaxChunks;
+    }
+    if (preference?.ragChunkMaxChars) {
+      ragChunkMaxChars = preference.ragChunkMaxChars;
+    }
+    if (preference?.ragMaxContextChars) {
+      ragMaxContextChars = preference.ragMaxContextChars;
     }
   } catch {
     temperature = defaultTemperature;
   }
 
   try {
-    const setup = await getAiSetup();
+    const setup = await getAiSetup(user.id);
     modelProvider = resolveProvider(setup.provider);
     preferenceModel = resolveModel(setup.model);
     preferenceApiKey = setup.apiKey;
@@ -88,16 +113,69 @@ export async function POST(request: Request) {
     );
   }
 
-  const supermemoryKey = await getSupermemoryKey();
-  if (!supermemoryKey) {
-    return NextResponse.json(
-      { error: "Supermemory API key is missing." },
-      { status: 400 },
-    );
+  const lastUserMessage = [...messages]
+    .reverse()
+    .find((message) => message.role === "user");
+  const lastUserText = lastUserMessage
+    ? getTextFromContent(lastUserMessage.content)
+    : "";
+
+  let matchedRule: ResponseRule | null = null;
+  if (lastUserText) {
+    const rules = await prisma.responseRule.findMany({
+      where: { userId: user.id, enabled: true },
+      orderBy: [{ priority: "asc" }, { createdAt: "asc" }],
+    });
+    const match = findMatchingRule(rules, lastUserText);
+    matchedRule = match?.rule ?? null;
   }
 
-  const enrichedMessages = await enrichWithKnowledge(messages);
+  const ruleMessage: CoreMessage | null = matchedRule
+    ? {
+        role: "system",
+        content: `The user message matches a response rule. Use the rule response as the base answer and polish it for clarity. Do not mention this instruction.\n\nRule response:\n${matchedRule.response}`,
+      }
+    : null;
+
+  const constraintMessage = buildConstraintMessage({
+    maxOutputTokens,
+    ragMaxChunks,
+    ragChunkMaxChars,
+    ragMaxContextChars,
+  });
+  const systemMessages: CoreMessage[] = [];
+  if (constraintMessage) {
+    systemMessages.push(constraintMessage);
+  }
+  if (ruleMessage) {
+    systemMessages.push(ruleMessage);
+  }
+  const messagesForModel =
+    systemMessages.length > 0 ? [...systemMessages, ...messages] : messages;
+  const limitedMessages = limitMessagesForContext(messagesForModel, historyMessageLimit);
+
+  const routingDecision = await routeNeedsRag(messages, user.id);
+  let enrichedMessages = limitedMessages;
+  if (routingDecision.needsRag) {
+    const supermemoryKey = await getSupermemoryKey(user.id);
+    if (!supermemoryKey) {
+      return NextResponse.json(
+        { error: "Supermemory API key is missing." },
+        { status: 400 },
+      );
+    }
+    enrichedMessages = await enrichWithKnowledge(limitedMessages, user.id, {
+      extraKnowledge: matchedRule?.response,
+      maxChunks: ragMaxChunks,
+      chunkMaxChars: ragChunkMaxChars,
+      maxContextChars: ragMaxContextChars,
+    });
+  }
   let text = "";
+  const maxTokens =
+    typeof maxOutputTokens === "number" && maxOutputTokens > 0
+      ? maxOutputTokens
+      : undefined;
 
   if (modelProvider === "groq") {
     const model = buildGroqModel(preferenceModel, preferenceApiKey);
@@ -105,6 +183,7 @@ export async function POST(request: Request) {
       model,
       temperature,
       messages: enrichedMessages,
+      maxTokens,
     });
     text = response.text;
   } else {
@@ -113,103 +192,9 @@ export async function POST(request: Request) {
       model: preferenceModel,
       temperature,
       messages: enrichedMessages,
+      maxOutputTokens: maxTokens,
     });
   }
 
   return NextResponse.json({ text });
-}
-
-function getTextFromContent(content: CoreMessage["content"]) {
-  if (typeof content === "string") {
-    return content;
-  }
-  if (!Array.isArray(content)) {
-    return "";
-  }
-  return content
-    .map((part) => {
-      if (part.type === "text") {
-        return part.text ?? "";
-      }
-      return "";
-    })
-    .join(" ")
-    .trim();
-}
-
-async function enrichWithKnowledge(messages: CoreMessage[]): Promise<CoreMessage[]> {
-  const lastUserMessage = [...messages]
-    .reverse()
-    .find((message) => message.role === "user");
-  if (!lastUserMessage) {
-    return messages;
-  }
-
-  const baseGuard =
-    "You must answer using only the knowledge base provided. If the answer is not present, say you don't know.";
-  const baseGuardMessage: CoreMessage = { role: "system", content: baseGuard };
-
-  try {
-    const query = getTextFromContent(lastUserMessage.content);
-    if (!query) {
-      return [baseGuardMessage, ...messages];
-    }
-
-    const queryLower = query.toLowerCase();
-    const [fileItems, textItems] = await Promise.all([
-      prisma.knowledgeFile.findMany({
-        select: { tag: true },
-      }),
-      prisma.knowledgeText.findMany({
-        select: { tag: true },
-      }),
-    ]);
-
-    const allContainerTags = new Set<string>();
-    const matchedContainerTags = new Set<string>();
-    const items = [...fileItems, ...textItems];
-
-    for (const item of items) {
-      if (!item.tag) {
-        continue;
-      }
-      const rawTag = item.tag.trim();
-      if (!rawTag) {
-        continue;
-      }
-      allContainerTags.add(rawTag);
-      const tagKey = normalizeTag(rawTag);
-      if (tagKey && queryLower.includes(tagKey)) {
-        matchedContainerTags.add(rawTag);
-      }
-    }
-
-    const containerTags =
-      matchedContainerTags.size > 0
-        ? [...matchedContainerTags]
-        : [...allContainerTags];
-
-    if (containerTags.length === 0) {
-      return [baseGuardMessage, ...messages];
-    }
-
-    const chunks = await searchSupermemory(query, { containerTags });
-    if (chunks.length === 0) {
-      return [baseGuardMessage, ...messages];
-    }
-
-    const knowledgeBlock = chunks
-      .slice(0, 6)
-      .map((chunk, index) => `[#${index + 1}] ${chunk}`)
-      .join("\n");
-
-    const knowledgeMessage: CoreMessage = {
-      role: "user",
-      content: `Use the knowledge base below to answer the user question.\n\nKnowledge base:\n${knowledgeBlock}`,
-    };
-
-    return [baseGuardMessage, knowledgeMessage, ...messages];
-  } catch {
-    return [baseGuardMessage, ...messages];
-  }
 }

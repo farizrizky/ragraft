@@ -2,6 +2,7 @@ import {
   addSupermemoryDocument,
   getSupermemoryMemoryId,
 } from "@/lib/supermemory";
+import { getServerUser } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { NextResponse } from "next/server";
 
@@ -19,7 +20,13 @@ function buildSupermemoryContent(title: string | undefined, content: string) {
 }
 
 export async function GET() {
+  const user = await getServerUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const items = await prisma.knowledgeText.findMany({
+    where: { userId: user.id },
     orderBy: { updatedAt: "desc" },
   });
 
@@ -27,6 +34,11 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const user = await getServerUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const body = (await request.json()) as {
     content?: string;
     title?: string;
@@ -46,14 +58,16 @@ export async function POST(request: Request) {
     buildSupermemoryContent(title, content),
     title,
     {
-    containerTag: finalTag,
-    tag: finalTag,
+      containerTag: finalTag,
+      tag: finalTag,
+      userId: user.id,
     },
   );
   const memoryId = getSupermemoryMemoryId(supermemoryPayload);
 
   const item = await prisma.knowledgeText.create({
     data: {
+      userId: user.id,
       title: title || null,
       content,
       tag: finalTag,

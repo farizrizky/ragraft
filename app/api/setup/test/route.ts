@@ -1,7 +1,8 @@
 import { createGroq } from "@ai-sdk/groq";
 import { generateText } from "ai";
 import { NextResponse } from "next/server";
-import { getAiSetup, getSupermemoryKey } from "@/lib/settings";
+import { getServerUser } from "@/lib/auth";
+import { getAiSetup, getRoutingSetup, getSupermemoryKey } from "@/lib/settings";
 import { generateGoogleText } from "@/lib/google-ai";
 
 const defaultSupermemoryTag =
@@ -13,16 +14,22 @@ type TestResult = {
 };
 
 export async function POST() {
+  const user = await getServerUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const logs: string[] = [];
-  const results: { ai: TestResult; supermemory: TestResult } = {
+  const results: { ai: TestResult; supermemory: TestResult; routing: TestResult } = {
     ai: { ok: false, message: "Not tested." },
     supermemory: { ok: false, message: "Not tested." },
+    routing: { ok: false, message: "Not tested." },
   };
 
   logs.push("Starting connection tests...");
 
   try {
-    const aiSetup = await getAiSetup();
+    const aiSetup = await getAiSetup(user.id);
     const provider = aiSetup.provider.toLowerCase();
     logs.push(`AI provider: ${aiSetup.provider}`);
     logs.push(`AI model: ${aiSetup.model}`);
@@ -59,7 +66,49 @@ export async function POST() {
   }
 
   try {
-    const supermemoryKey = await getSupermemoryKey();
+    const routingSetup = await getRoutingSetup(user.id);
+    if (routingSetup.usesFallback) {
+      results.routing = { ok: results.ai.ok, message: "Using answer model settings." };
+      logs.push("Routing: using answer model settings.");
+    } else {
+      const provider = routingSetup.provider.toLowerCase();
+      logs.push(`Routing provider: ${routingSetup.provider}`);
+      logs.push(`Routing model: ${routingSetup.model}`);
+
+      if (!routingSetup.apiKey) {
+        results.routing = { ok: false, message: "API key is missing." };
+        logs.push("Routing: missing API key.");
+      } else if (provider === "groq") {
+        const model = createGroq({ apiKey: routingSetup.apiKey })(routingSetup.model);
+        await generateText({
+          model,
+          temperature: 0,
+          messages: [{ role: "user", content: "Ping" }],
+        });
+        results.routing = { ok: true, message: "Connected." };
+        logs.push("Routing: connection OK.");
+      } else if (provider === "google") {
+        await generateGoogleText({
+          apiKey: routingSetup.apiKey,
+          model: routingSetup.model,
+          temperature: 0,
+          messages: [{ role: "user", content: "Ping" }],
+        });
+        results.routing = { ok: true, message: "Connected." };
+        logs.push("Routing: connection OK.");
+      } else {
+        results.routing = { ok: false, message: "Provider not supported yet." };
+        logs.push("Routing: unsupported provider.");
+      }
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Routing test failed.";
+    results.routing = { ok: false, message };
+    logs.push(`Routing: ${message}`);
+  }
+
+  try {
+    const supermemoryKey = await getSupermemoryKey(user.id);
     if (!supermemoryKey) {
       results.supermemory = { ok: false, message: "API key is missing." };
       logs.push("Supermemory: missing API key.");

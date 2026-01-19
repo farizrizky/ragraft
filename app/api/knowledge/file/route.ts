@@ -3,6 +3,7 @@ import {
   deleteSupermemoryById,
   getSupermemoryMemoryId,
 } from "@/lib/supermemory";
+import { getServerUser } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import mammoth from "mammoth";
 import pdfParse from "pdf-parse";
@@ -39,7 +40,13 @@ async function extractTextFromFile(file: File) {
 }
 
 export async function GET() {
+  const user = await getServerUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const items = await prisma.knowledgeFile.findMany({
+    where: { userId: user.id },
     orderBy: { updatedAt: "desc" },
   });
 
@@ -47,6 +54,11 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const user = await getServerUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const formData = await request.formData();
   const file = formData.get("file");
   const title = formData.get("title");
@@ -80,12 +92,14 @@ export async function POST(request: Request) {
     {
       containerTag: finalTag,
       tag: finalTag,
+      userId: user.id,
     },
   );
   const memoryId = getSupermemoryMemoryId(supermemoryPayload);
 
   const item = await prisma.knowledgeFile.create({
     data: {
+      userId: user.id,
       title: typeof title === "string" && title.trim() ? title.trim() : null,
       fileName: file.name,
       mimeType: file.type,
@@ -99,23 +113,37 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const user = await getServerUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const body = (await request.json()) as { id?: string };
   if (!body.id) {
     return NextResponse.json({ error: "ID is required." }, { status: 400 });
   }
 
-  const existing = await prisma.knowledgeFile.findUnique({
-    where: { id: body.id },
-  });
-
-  if (existing) {
-    if (existing.memoryId) {
-      await deleteSupermemoryById(existing.memoryId);
-    }
-    await prisma.knowledgeFile.delete({
+  try {
+    const existing = await prisma.knowledgeFile.findUnique({
       where: { id: body.id },
     });
-  }
 
-  return NextResponse.json({ ok: true });
+    if (existing) {
+      if (existing.userId !== user.id) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+      if (existing.memoryId) {
+        await deleteSupermemoryById(existing.memoryId, existing.userId);
+      }
+      await prisma.knowledgeFile.delete({
+        where: { id: body.id },
+      });
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to delete document.";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }

@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import ConfirmDialog from "@/components/ConfirmDialog";
+import Notification from "@/components/Notification";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type KnowledgeFileItem = {
   id: string;
@@ -13,15 +15,32 @@ type KnowledgeFileItem = {
   updatedAt: string;
 };
 
+type NotificationTone = "success" | "error" | "warning" | "info";
+
 export default function KnowledgeFilesPage() {
   const [items, setItems] = useState<KnowledgeFileItem[]>([]);
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
   const [tag, setTag] = useState("");
-  const [status, setStatus] = useState<string | null>(null);
+  const [notification, setNotification] = useState<{
+    message: string;
+    tone: NotificationTone;
+  } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<KnowledgeFileItem | null>(
+    null,
+  );
+  const formRef = useRef<HTMLFormElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
+
+  const notify = useCallback((tone: NotificationTone, message: string) => {
+    setNotification({ tone, message });
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -38,7 +57,7 @@ export default function KnowledgeFilesPage() {
         }
       } catch {
         if (isMounted) {
-          setStatus("Failed to load knowledge files.");
+          notify("error", "Failed to load knowledge files.");
         }
       } finally {
         if (isMounted) {
@@ -52,17 +71,45 @@ export default function KnowledgeFilesPage() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [notify]);
+
+  const filteredItems = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) {
+      return items;
+    }
+    return items.filter((item) => {
+      const title = item.title?.toLowerCase() ?? "";
+      const tag = item.tag?.toLowerCase() ?? "";
+      const fileName = item.fileName.toLowerCase();
+      return (
+        title.includes(normalized) ||
+        tag.includes(normalized) ||
+        fileName.includes(normalized)
+      );
+    });
+  }, [items, query]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pagedItems = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredItems.slice(start, start + pageSize);
+  }, [filteredItems, currentPage]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query]);
 
   const handleUpload = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!file) {
-      setStatus("Please select a file.");
+      notify("warning", "Please select a file.");
       return;
     }
 
     setIsUploading(true);
-    setStatus("Uploading...");
+    notify("info", "Uploading...");
 
     try {
       const formData = new FormData();
@@ -92,25 +139,52 @@ export default function KnowledgeFilesPage() {
         throw new Error(errorMessage);
       }
 
-      setStatus("Document uploaded.");
+      const payload = (await response.json()) as { item?: KnowledgeFileItem };
+
+      notify("success", "Document uploaded.");
       setFile(null);
       setTitle("");
       setTag("");
-      (event.currentTarget as HTMLFormElement).reset();
+      formRef.current?.reset();
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
 
-      const listResponse = await fetch("/api/knowledge/file");
-      const listData = (await listResponse.json()) as { items?: KnowledgeFileItem[] };
-      setItems(listData.items ?? []);
+      if (payload.item) {
+        setItems((prev) => [payload.item as KnowledgeFileItem, ...prev]);
+      } else {
+        const listResponse = await fetch("/api/knowledge/file");
+        if (listResponse.ok) {
+          const listData = (await listResponse.json()) as {
+            items?: KnowledgeFileItem[];
+          };
+          setItems(listData.items ?? []);
+        } else {
+          notify("warning", "Upload succeeded, but refresh list failed.");
+        }
+      }
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Upload failed.");
+      notify(
+        "error",
+        error instanceof Error ? error.message : "Upload failed.",
+      );
     } finally {
       setIsUploading(false);
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const requestDelete = (item: KnowledgeFileItem) => {
+    setPendingDelete(item);
+  };
+
+  const handleDelete = async () => {
+    if (!pendingDelete) {
+      return;
+    }
+
+    const { id } = pendingDelete;
     setDeletingId(id);
-    setStatus("Deleting...");
+    notify("info", "Deleting...");
     try {
       const response = await fetch("/api/knowledge/file", {
         method: "DELETE",
@@ -118,14 +192,32 @@ export default function KnowledgeFilesPage() {
         body: JSON.stringify({ id }),
       });
       if (!response.ok) {
-        throw new Error("Failed to delete document.");
+        let message = "Failed to delete document.";
+        const errorText = await response.text();
+        try {
+          const payload = JSON.parse(errorText) as { error?: string };
+          if (payload?.error) {
+            message = payload.error;
+          } else if (errorText) {
+            message = errorText;
+          }
+        } catch {
+          if (errorText) {
+            message = errorText;
+          }
+        }
+        throw new Error(message);
       }
       setItems((prev) => prev.filter((item) => item.id !== id));
-      setStatus("Document deleted.");
+      notify("success", "Document deleted.");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Delete failed.");
+      notify(
+        "error",
+        error instanceof Error ? error.message : "Delete failed.",
+      );
     } finally {
       setDeletingId(null);
+      setPendingDelete(null);
     }
   };
 
@@ -140,10 +232,22 @@ export default function KnowledgeFilesPage() {
           Upload PDF, DOCX, or TXT documents to ground AI responses.
         </p>
       </section>
+      {notification ? (
+        <Notification
+          message={notification.message}
+          tone={notification.tone}
+          floating
+          onDismiss={() => setNotification(null)}
+        />
+      ) : null}
 
       <section className="rounded-3xl border border-[color:var(--panel-border)] bg-[color:var(--panel)] p-6">
         <h2 className="text-lg font-semibold">Upload document</h2>
-        <form onSubmit={handleUpload} className="mt-4 flex flex-col gap-4">
+        <form
+          ref={formRef}
+          onSubmit={handleUpload}
+          className="mt-4 flex flex-col gap-4"
+        >
           <label className="flex flex-col gap-2 text-sm font-medium">
             Title
             <input
@@ -168,6 +272,7 @@ export default function KnowledgeFilesPage() {
             <label className="flex flex-col gap-2 text-sm font-medium md:flex-1">
               File
               <input
+                ref={fileInputRef}
                 type="file"
                 accept=".pdf,.docx,.txt"
                 onChange={(event) => setFile(event.target.files?.[0] ?? null)}
@@ -183,18 +288,21 @@ export default function KnowledgeFilesPage() {
               >
                 {isUploading ? "Uploading..." : "Upload"}
               </button>
-              {status ? (
-                <span className="text-xs font-semibold text-[color:var(--muted)]">
-                  {status}
-                </span>
-              ) : null}
             </div>
           </div>
         </form>
       </section>
 
       <section className="rounded-3xl border border-[color:var(--panel-border)] bg-[color:var(--panel)] p-6">
-        <h2 className="text-lg font-semibold">Saved files</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Saved files</h2>
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search files..."
+            className="w-48 rounded-full border border-[color:var(--panel-border)] bg-transparent px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[color:var(--foreground)] outline-none transition focus:ring-2 focus:ring-[color:var(--ring)]"
+          />
+        </div>
         <div className="mt-4 overflow-hidden rounded-2xl border border-[color:var(--panel-border)]">
           <table className="w-full text-left text-sm">
             <thead className="bg-[color:var(--background)] text-xs uppercase tracking-[0.2em] text-[color:var(--muted)]">
@@ -213,14 +321,14 @@ export default function KnowledgeFilesPage() {
                     Loading...
                   </td>
                 </tr>
-              ) : items.length === 0 ? (
+              ) : pagedItems.length === 0 ? (
                 <tr>
                   <td className="px-4 py-4 text-[color:var(--muted)]" colSpan={5}>
                     No uploaded files yet.
                   </td>
                 </tr>
               ) : (
-                items.map((item) => (
+                pagedItems.map((item) => (
                   <tr key={item.id}>
                     <td className="px-4 py-4 font-medium">
                       {item.title || "Untitled"}
@@ -237,7 +345,7 @@ export default function KnowledgeFilesPage() {
                     <td className="px-4 py-4">
                       <button
                         type="button"
-                        onClick={() => handleDelete(item.id)}
+                        onClick={() => requestDelete(item)}
                         disabled={isUploading || deletingId === item.id}
                         className="rounded-full border border-[color:var(--panel-border)] px-4 py-1 text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)] transition hover:text-[color:var(--foreground)] disabled:cursor-not-allowed disabled:opacity-60"
                       >
@@ -250,7 +358,44 @@ export default function KnowledgeFilesPage() {
             </tbody>
           </table>
         </div>
+        <div className="mt-4 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-[color:var(--muted)]">
+          <span>
+            {filteredItems.length} result
+            {filteredItems.length === 1 ? "" : "s"}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              className="rounded-full border border-[color:var(--panel-border)] px-3 py-1 text-[color:var(--muted)] transition hover:text-[color:var(--foreground)] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Prev
+            </button>
+            <span>
+              Page {currentPage} of {totalPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages}
+              className="rounded-full border border-[color:var(--panel-border)] px-3 py-1 text-[color:var(--muted)] transition hover:text-[color:var(--foreground)] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Next
+            </button>
+          </div>
+        </div>
       </section>
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
+        title="Delete document?"
+        description="This action will permanently remove the document from your knowledge base."
+        confirmLabel="Yes, delete"
+        cancelLabel="Cancel"
+        isBusy={Boolean(deletingId)}
+        onConfirm={handleDelete}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   );
 }

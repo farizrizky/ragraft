@@ -16,24 +16,97 @@ enum StreamSpeed {
   NORMAL
 }
 
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  passwordHash  String?
+  accounts      Account[]
+  sessions      Session[]
+  chatPreference ChatPreference?
+  responseRules ResponseRule[]
+  knowledgeTexts KnowledgeText[]
+  knowledgeFiles KnowledgeFile[]
+  appSetting    AppSetting?
+  chatSessions  ChatSession[]
+  chatQuestions ChatQuestion[]
+  chatKeywords  ChatKeyword[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("Sovereign")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
 model ChatPreference {
-  id          String      @id
+  id          String      @id @default(cuid())
   name        String
   tone        String
   streamSpeed StreamSpeed
   openingLine String
+  description String?
+  policyPrompt String?
+  chatLogoUrl String?
+  headerColor String?
+  headerTextColor String?
+  developerMode Boolean   @default(false)
+  maxOutputTokens Int?
+  historyMessageLimit Int?
+  ragMaxChunks Int?
+  ragChunkMaxChars Int?
+  ragMaxContextChars Int?
   temperature  Float @default(0.4)
   provider    String @default("groq")
   model       String @default("llama-3.1-8b-instant")
+  publicCode  String?     @unique
   apiKeyCiphertext String?
   apiKeyIv    String?
   apiKeyTag   String?
+  userId      String      @unique
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 }
 
 model KnowledgeText {
   id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   title     String?
   content   String
   tag       String?
@@ -44,6 +117,8 @@ model KnowledgeText {
 
 model KnowledgeFile {
   id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   title       String?
   fileName    String
   mimeType    String
@@ -55,15 +130,78 @@ model KnowledgeFile {
 }
 
 model AppSetting {
-  id                     String   @id
+  id                     String   @id @default(cuid())
+  userId                 String   @unique
+  user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   provider               String   @default("groq")
   model                  String   @default("llama-3.1-8b-instant")
   aiKeyCiphertext        String?
   aiKeyIv                String?
   aiKeyTag               String?
+  routingProvider        String?
+  routingModel           String?
+  routingKeyCiphertext   String?
+  routingKeyIv           String?
+  routingKeyTag          String?
   supermemoryKeyCiphertext String?
   supermemoryKeyIv       String?
   supermemoryKeyTag      String?
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
+}
+
+model ChatSession {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ipHash     String
+  startedAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([userId, lastSeenAt])
+  @@index([userId, ipHash])
+}
+
+model ChatQuestion {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  text        String
+  count       Int      @default(1)
+  lastAskedAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, text])
+  @@index([userId, count])
+}
+
+model ChatKeyword {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  keyword    String
+  count      Int      @default(1)
+  lastUsedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([userId, keyword])
+  @@index([userId, count])
+}
+
+model ResponseRule {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  phrase    String
+  response  String
+  enabled   Boolean  @default(true)
+  priority  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, enabled, priority, createdAt])
 }
